@@ -27,6 +27,8 @@ env::var("TARGET_CHAT").expect("TARGET_CHAT env var not set").parse::<i64>().exp
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let list_mode = std::env::args().any(|arg| arg == "--list");
+
     let session = Session::load_file_or_create("session")?;
     let config = Config {
         session,
@@ -40,11 +42,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !client.is_authorized().await? {
         let token = client.request_login_code(&prompt("Phone: ")).await?;
         let code = prompt("Code: ");
-        //if let Some(password) = &*PASSWORD {
-        //    client.sign_in_password(&token, &code, &password).await?;
-        //} else {
-        //    client.sign_in(&token, &code).await?;
-        //}
         match client.sign_in(&token, &code).await {
             Err(SignInError::PasswordRequired(password_token)) => {
                 let pwd = prompt("Password: ");
@@ -55,11 +52,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    if list_mode {
+        let mut dialogs = client.iter_dialogs();
+        while let Some(dialog) = dialogs.next().await? {
+            let chat = dialog.chat();
+            println!("{} ({:?})", chat.name(), chat.id());
+        }
+        return Ok(());
+    }
+
     loop {
         let update = client.next_update().await?;
         if let Update::NewMessage(msg) = update {
             if msg.chat().id() == *TARGET_CHAT {
-                    println!("{}: {}", msg.chat().id(), msg.text());
+                println!("{}: {}", msg.chat().id(), msg.text());
             }
         }
     }
