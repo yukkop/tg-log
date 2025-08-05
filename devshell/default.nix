@@ -9,6 +9,12 @@ pkgs.mkShell {
   buildInputs = [ dev-help ];
   nativeBuildInputs = [ rustToolchain pkgs.pkg-config ];
 
+  shellHook = ''
+    set -a
+    source .env
+    set +a
+  '';
+
   # environment
   PAGER="${pkgs.hectic.nvim-pager}/bin/pager";
 }
