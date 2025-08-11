@@ -3,11 +3,16 @@
    printf '%s\n' \
    'phph'
  '';
- rustToolchain = pkgs.pkgsBuildHost.rust-bin.stable."1.87.0".default;
+ rustToolchain = pkgs.pkgsBuildHost.rust-bin.stable."1.88.0".default;
 in
 pkgs.mkShell {
   buildInputs = [ dev-help ];
-  nativeBuildInputs = [ rustToolchain pkgs.pkg-config ];
+  nativeBuildInputs = [ rustToolchain ] ++ (with pkgs; [ 
+    pkg-config
+    openssl
+    cargo-leptos
+    cargo-generate
+  ]);
 
   shellHook = ''
     set -a
