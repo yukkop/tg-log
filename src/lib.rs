@@ -1,4 +1,7 @@
 pub mod app;
+pub mod config;
+pub mod telegram;
+pub mod chat;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]

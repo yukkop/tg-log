@@ -1,9 +1,11 @@
 { pkgs }: let
- dev-help = pkgs.writeShellScriptBin "dev-help" /* sh */ ''
-   printf '%s\n' \
-   'phph'
- '';
- rustToolchain = pkgs.pkgsBuildHost.rust-bin.stable."1.88.0".default;
+  dev-help = pkgs.writeShellScriptBin "dev-help" /* sh */ ''
+    printf '%s\n' \
+    'phph'
+  '';
+  rustToolchain = pkgs.pkgsBuildHost.rust-bin.stable."1.88.0".default.override {
+    targets = [ "wasm32-unknown-unknown" ];
+  };
 in
 pkgs.mkShell {
   buildInputs = [ dev-help ];
@@ -12,6 +14,7 @@ pkgs.mkShell {
     openssl
     cargo-leptos
     cargo-generate
+    sass
   ]);
 
   shellHook = ''
