@@ -15,6 +15,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <AutoReload options=options.clone() />
                 <HydrationScripts options/>
+                <link rel="stylesheet" href="/pkg/tg-log-new.css"/>
                 <MetaTags/>
             </head>
             <body>
