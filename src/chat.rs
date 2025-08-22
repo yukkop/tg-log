@@ -26,100 +26,52 @@ impl Default for ChatState {
 
 #[component]
 pub fn ChatInterface() -> impl IntoView {
-    let chat_state = RwSignal::new(ChatState::default());
     let scroll_container_ref = NodeRef::<html::Div>::new();
     let is_auto_scroll = RwSignal::new(true);
     
-    // Load initial messages
-    let load_messages = Action::new(move |chat_id: &i64| {
-        let chat_id = *chat_id;
-        async move {
+    // Use Resource::new for SSR data loading
+    let messages_resource: Resource<Result<Vec<ChatMessage>, String>> = Resource::new(
+        || (),
+        move |_| async move {
             #[cfg(feature = "ssr")]
             {
                 use crate::telegram::{create_telegram_client, get_chat_history};
+                use crate::config::TARGET_CHAT;
+                
                 match create_telegram_client().await {
                     Ok(client) => {
-                        match get_chat_history(&client, chat_id, 50).await {
-                            Ok(messages) => {
-                                chat_state.update(|state| {
-                                    state.messages = messages;
-                                    state.loading = false;
-                                    state.error = None;
-                                    state.chat_id = Some(chat_id);
-                                });
-                            }
-                            Err(e) => {
-                                chat_state.update(|state| {
-                                    state.loading = false;
-                                    state.error = Some(format!("Failed to load messages: {}", e));
-                                });
-                            }
+                        match get_chat_history(&client, *TARGET_CHAT, 50).await {
+                            Ok(messages) => Ok(messages),
+                            Err(e) => Err(format!("Failed to load messages: {}", e)),
                         }
                     }
-                    Err(e) => {
-                        chat_state.update(|state| {
-                            state.loading = false;
-                            state.error = Some(format!("Failed to connect to Telegram: {}", e));
-                        });
-                    }
+                    Err(e) => Err(format!("Failed to connect to Telegram: {}", e)),
                 }
             }
             #[cfg(not(feature = "ssr"))]
             {
-                // Client-side placeholder - in a real app you'd make an API call
-                chat_state.update(|state| {
-                    state.messages = vec![
-                        ChatMessage {
-                            id: 1,
-                            text: "Welcome to the chat! (Demo mode - not connected to Telegram)".to_string(),
-                            timestamp: chrono::Utc::now().timestamp(),
-                            sender: "System".to_string(),
-                            chat_id,
-                        }
-                    ];
-                    state.loading = false;
-                    state.chat_id = Some(chat_id);
-                });
+                // Client-side fallback
+                Ok(vec![
+                    ChatMessage {
+                        id: 1,
+                        text: "Welcome to the chat! (Demo mode - not connected to Telegram)".to_string(),
+                        timestamp: chrono::Utc::now().timestamp(),
+                        sender: "System".to_string(),
+                        chat_id: -1001234567890,
+                    }
+                ])
             }
         }
-    });
-
-    // Load more messages when scrolling up
-    let load_more_messages = Action::new(move |_: &()| {
-        async move {
-            let state = chat_state.get();
-            if let Some(_chat_id) = state.chat_id {
-                if !state.loading && state.has_more_history {
-                    chat_state.update(|s| s.loading = true);
-                    
-                    #[cfg(feature = "ssr")]
-                    {
-                        // In a real implementation, you'd load messages before the earliest message
-                        // For now, we'll just simulate no more history
-                        chat_state.update(|state| {
-                            state.loading = false;
-                            state.has_more_history = false;
-                        });
-                    }
-                    #[cfg(not(feature = "ssr"))]
-                    {
-                        // Simulate loading more messages
-                        chat_state.update(|state| {
-                            state.loading = false;
-                            state.has_more_history = false;
-                        });
-                    }
-                }
-            }
-        }
-    });
+    );
 
     // Auto-scroll to bottom when new messages arrive
     Effect::new(move |_| {
-        let messages_count = chat_state.get().messages.len();
-        if is_auto_scroll.get() && messages_count > 0 {
-            if let Some(container) = scroll_container_ref.get() {
-                container.set_scroll_top(container.scroll_height());
+        let messages = messages_resource.get();
+        if let Some(Ok(messages)) = messages {
+            if is_auto_scroll.get() && !messages.is_empty() {
+                if let Some(container) = scroll_container_ref.get() {
+                    container.set_scroll_top(container.scroll_height());
+                }
             }
         }
     });
@@ -134,38 +86,22 @@ pub fn ChatInterface() -> impl IntoView {
             // Check if scrolled to bottom (with small tolerance)
             let at_bottom = scroll_top + client_height >= scroll_height - 10;
             is_auto_scroll.set(at_bottom);
-            
-            // Check if scrolled to top and load more messages
-            if scroll_top <= 10 && chat_state.get().has_more_history {
-                load_more_messages.dispatch(());
-            }
         }
     };
-
-    // Initialize with a default chat ID (you can modify this)
-    Effect::new(move |_| {
-        #[cfg(feature = "ssr")]
-        {
-            use crate::config::TARGET_CHAT;
-            load_messages.dispatch(*TARGET_CHAT);
-        }
-        #[cfg(not(feature = "ssr"))]
-        {
-            // Placeholder chat ID for client-side
-            load_messages.dispatch(-1001234567890);
-        }
-    });
 
     view! {
         <div class="chat-container">
             <div class="chat-header">
                 <h2>"Telegram Chat"</h2>
                 {move || {
-                    let state = chat_state.get();
-                    if let Some(chat_id) = state.chat_id {
-                        view! { <span class="chat-id">"Chat ID: " {chat_id}</span> }.into_any()
-                    } else {
-                        view! { <span class="chat-id">"No chat loaded"</span> }.into_any()
+                    #[cfg(feature = "ssr")]
+                    {
+                        use crate::config::TARGET_CHAT;
+                        view! { <span class="chat-id">"Chat ID: " {*TARGET_CHAT}</span> }.into_any()
+                    }
+                    #[cfg(not(feature = "ssr"))]
+                    {
+                        view! { <span class="chat-id">"Chat ID: Demo Mode"</span> }.into_any()
                     }
                 }}
             </div>
@@ -176,40 +112,42 @@ pub fn ChatInterface() -> impl IntoView {
                 on:scroll=on_scroll
             >
                 {move || {
-                    let state = chat_state.get();
+                    let messages = messages_resource.get();
                     
-                    if state.loading && state.messages.is_empty() {
-                        view! {
-                            <div class="loading-indicator">
-                                "Loading messages..."
-                            </div>
-                        }.into_any()
-                    } else if let Some(error) = &state.error {
-                        view! {
-                            <div class="error-message">
-                                {error.clone()}
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! {
-                            <>
-                                {if state.loading {
-                                    view! {
-                                        <div class="loading-more">
-                                            "Loading more messages..."
-                                        </div>
-                                    }.into_any()
-                                } else {
-                                    view! {}.into_any()
-                                }}
-                                
-                                {state.messages.into_iter().map(|message| {
-                                    view! {
-                                        <MessageComponent message=message />
-                                    }
-                                }).collect::<Vec<_>>()}
-                            </>
-                        }.into_any()
+                    match messages {
+                        None => {
+                            view! {
+                                <div class="loading-indicator">
+                                    "Loading messages..."
+                                </div>
+                            }.into_any()
+                        }
+                        Some(Ok(messages)) => {
+                            if messages.is_empty() {
+                                view! {
+                                    <div class="no-messages">
+                                        "No messages found in this chat."
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <>
+                                        {messages.into_iter().map(|message| {
+                                            view! {
+                                                <MessageComponent message=message />
+                                            }
+                                        }).collect::<Vec<_>>()}
+                                    </>
+                                }.into_any()
+                            }
+                        }
+                        Some(Err(error)) => {
+                            view! {
+                                <div class="error-message">
+                                    {error}
+                                </div>
+                            }.into_any()
+                        }
                     }
                 }}
             </div>
