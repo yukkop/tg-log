@@ -236,6 +236,34 @@ fn MessageComponent(message: ChatMessage) -> impl IntoView {
 }
 
 fn render_media_info(media: &crate::telegram::MediaInfo) -> impl IntoView {
+    // Check if this is a sticker (webp image)
+    if let Some(mime) = &media.mime_type {
+        if mime == "image/webp" && media.file_name.as_ref().map_or(false, |name| name.starts_with("sticker_")) {
+            let file_name = media.file_name.as_ref().unwrap();
+            let sticker_url = format!("/stickers/{}", file_name);
+            
+            // Render sticker as actual image with fallback
+            return view! {
+                <div class="sticker-container">
+                    <img 
+                        src={sticker_url.clone()}
+                        alt="Sticker"
+                        class="sticker-image"
+                        loading="lazy"
+                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                    />
+                    <div class="sticker-fallback" style="display: none;">
+                        "🎭"
+                        <div class="sticker-info">
+                            "Sticker (" {format_file_size(media.file_size.unwrap_or(0))} ")"
+                        </div>
+                    </div>
+                </div>
+            }.into_any();
+        }
+    }
+
+    // Regular media info display
     view! {
         <div class="media-info">
             {media.file_name.as_ref().map(|name| {
@@ -254,7 +282,7 @@ fn render_media_info(media: &crate::telegram::MediaInfo) -> impl IntoView {
                 }.into_any()
             })}
         </div>
-    }
+    }.into_any()
 }
 
 fn format_file_size(bytes: u64) -> String {

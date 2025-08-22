@@ -20,6 +20,10 @@ async fn main() {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())
         })
+        .nest_service("/stickers", axum::routing::get_service(
+            tower::ServiceBuilder::new()
+                .service(tower_http::services::ServeDir::new("target/site/stickers"))
+        ))
         .fallback(leptos_axum::file_and_error_handler(shell))
         .with_state(leptos_options);
 

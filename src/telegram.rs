@@ -173,7 +173,7 @@ pub async fn get_chat_history(client: &Client, chat_id: i64, limit: i32) -> Resu
     
     for i in 0..limit {
         if let Some(message) = iter.next().await? {
-            let (message_type, media_info, text) = classify_message(&message);
+            let (message_type, media_info, text) = classify_message(&client, &message);
             let formatted_text = extract_text_entities(&message);
             
             eprintln!("Message {}: ID={}, Type={:?}, Text={}", i + 1, message.id(), message_type, text);
@@ -204,7 +204,7 @@ pub async fn get_chat_history(client: &Client, chat_id: i64, limit: i32) -> Resu
 }
 
 #[cfg(feature = "ssr")]
-fn classify_message(message: &grammers_client::types::Message) -> (MessageType, Option<MediaInfo>, String) {
+fn classify_message(client: &grammers_client::Client, message: &grammers_client::types::Message) -> (MessageType, Option<MediaInfo>, String) {
     use grammers_client::types::Media;
     
     // Check if message has media
@@ -251,9 +251,31 @@ fn classify_message(message: &grammers_client::types::Message) -> (MessageType, 
                 
                 (message_type, Some(media_info), text)
             },
-            Media::Sticker(_) => {
-                (MessageType::Sticker, None, "[Sticker]".to_string())
-            },
+                                     Media::Sticker(sticker) => {
+                 let sticker_id = sticker.document.id().to_string();
+                 let media_info = MediaInfo {
+                     file_name: Some(format!("sticker_{}.webp", sticker_id)),
+                     file_size: Some(sticker.document.size() as u64),
+                     mime_type: Some("image/webp".to_string()),
+                     caption: None,
+                 };
+                 let emoji = if !sticker.emoji().is_empty() { 
+                     sticker.emoji() 
+                 } else { 
+                     "🎭" 
+                 };
+                 
+                 // Trigger background download
+                 let client_clone = client.clone();
+                 let sticker_doc = sticker.document.clone();
+                 tokio::spawn(async move {
+                     if let Err(e) = download_sticker(&client_clone, sticker_doc).await {
+                         eprintln!("Failed to download sticker {}: {}", sticker_id, e);
+                     }
+                 });
+                 
+                 (MessageType::Sticker, Some(media_info), format!("[{} Sticker]", emoji))
+             },
             Media::Contact(_) => {
                 (MessageType::Contact, None, "[Contact]".to_string())
             },
@@ -398,6 +420,41 @@ fn convert_grammers_entities_to_text_entities(entities: &[grammers_tl_types::enu
     
     eprintln!("Successfully converted {} entities!", result.len());
     result
+}
+
+#[cfg(feature = "ssr")]
+pub async fn download_sticker(client: &grammers_client::Client, document: grammers_client::types::media::Document) -> Result<Vec<u8>, String> {
+    use std::path::Path;
+    use tokio::fs;
+    
+    let sticker_id = document.id().to_string();
+    let file_path = format!("target/site/stickers/sticker_{}.webp", sticker_id);
+    
+    // Check if already downloaded
+    if Path::new(&file_path).exists() {
+        eprintln!("Sticker {} already cached, reading from disk", sticker_id);
+        return fs::read(&file_path).await.map_err(|e| format!("Failed to read cached file: {}", e));
+    }
+    
+    eprintln!("Downloading sticker {} from Telegram", sticker_id);
+    
+    // Create stickers directory if it doesn't exist
+    if let Some(parent) = Path::new(&file_path).parent() {
+        fs::create_dir_all(parent).await.map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    // Download the sticker using grammers-client
+    use grammers_client::types::Downloadable;
+    let downloadable = Downloadable::Media(grammers_client::types::Media::Document(document));
+    client.download_media(&downloadable, &file_path).await.map_err(|e| format!("Download error: {}", e))?;
+    
+    // Read the downloaded file to return the data
+    let file_data = fs::read(&file_path).await.map_err(|e| format!("Failed to read downloaded file: {}", e))?;
+    
+    eprintln!("Downloaded {} bytes for sticker {}", file_data.len(), sticker_id);
+    
+    eprintln!("Sticker {} cached to {}", sticker_id, file_path);
+    Ok(file_data)
 }
 
 #[cfg(feature = "ssr")]

@@ -247,6 +247,48 @@ main {
 	}
 }
 
+// Sticker styling
+.sticker-container {
+	margin-bottom: 8px;
+	display: inline-block;
+	
+	.sticker-image {
+		max-width: 128px;
+		max-height: 128px;
+		border-radius: 8px;
+		transition: transform 0.2s ease;
+		
+		&:hover {
+			transform: scale(1.05);
+		}
+	}
+	
+	.sticker-fallback {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 12px;
+		background: #f8f9fa;
+		border-radius: 12px;
+		border: 2px solid #e9ecef;
+		min-width: 80px;
+		
+		font-size: 2rem; // Large emoji
+		
+		.sticker-info {
+			font-size: 0.75rem;
+			color: #6c757d;
+			margin-top: 4px;
+			text-align: center;
+		}
+		
+		&:hover {
+			background: #e9ecef;
+			border-color: #dee2e6;
+		}
+	}
+}
+
 // Message type specific styling
 .message-type-photo {
 	border-left: 4px solid #e91e63;
